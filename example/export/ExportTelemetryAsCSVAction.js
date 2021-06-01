@@ -20,70 +20,68 @@
  * at runtime from the About dialog for additional information.
  *****************************************************************************/
 
-define([], function () {
-    'use strict';
+export default class ExportTelemetryAsCSVAction {
 
-    /**
-     * An example of using the `exportService`; queries for telemetry
-     * and provides the results as a CSV file.
-     * @param {platform/exporters.ExportService} exportService the
-     *        service which will handle the CSV export
-     * @param {ActionContext} context the action's context
-     * @constructor
-     * @memberof example/export
-     * @implements {Action}
-     */
-    function ExportTelemetryAsCSVAction(exportService, context) {
-        this.exportService = exportService;
-        this.context = context;
+  /**
+   * An example of using the `exportService`; queries for telemetry
+   * and provides the results as a CSV file.
+   * @param {platform/exporters.ExportService} exportService the
+   *        service which will handle the CSV export
+   * @param {ActionContext} context the action's context
+   * @constructor
+   * @memberof example/export
+   * @implements {Action}
+   */
+  constructor(exportService, context) {
+    this.exportService = exportService;
+    this.context = context
+  }
+
+  perform() {
+    var context = this.context,
+        domainObject = context.domainObject,
+        telemetry = domainObject.getCapability("telemetry"),
+        metadata = telemetry.getMetadata(),
+        domains = metadata.domains,
+        ranges = metadata.ranges,
+        exportService = this.exportService;
+
+    function getName(domainOrRange) {
+        return domainOrRange.name;
     }
 
-    ExportTelemetryAsCSVAction.prototype.perform = function () {
-        var context = this.context,
-            domainObject = context.domainObject,
-            telemetry = domainObject.getCapability("telemetry"),
-            metadata = telemetry.getMetadata(),
-            domains = metadata.domains,
-            ranges = metadata.ranges,
-            exportService = this.exportService;
+    telemetry.requestData({}).then(function (series) {
+        var headers = domains.map(getName).concat(ranges.map(getName)),
+            rows = [],
+            row,
+            i;
 
-        function getName(domainOrRange) {
-            return domainOrRange.name;
+        function copyDomainsToRow(telemetryRow, index) {
+            domains.forEach(function (domain) {
+                telemetryRow[domain.name] = series.getDomainValue(index, domain.key);
+            });
         }
 
-        telemetry.requestData({}).then(function (series) {
-            var headers = domains.map(getName).concat(ranges.map(getName)),
-                rows = [],
-                row,
-                i;
+        function copyRangesToRow(telemetryRow, index) {
+            ranges.forEach(function (range) {
+                telemetryRow[range.name] = series.getRangeValue(index, range.key);
+            });
+        }
 
-            function copyDomainsToRow(telemetryRow, index) {
-                domains.forEach(function (domain) {
-                    telemetryRow[domain.name] = series.getDomainValue(index, domain.key);
-                });
-            }
+        for (i = 0; i < series.getPointCount(); i += 1) {
+            row = {};
+            copyDomainsToRow(row, i);
+            copyRangesToRow(row, i);
+            rows.push(row);
+        }
 
-            function copyRangesToRow(telemetryRow, index) {
-                ranges.forEach(function (range) {
-                    telemetryRow[range.name] = series.getRangeValue(index, range.key);
-                });
-            }
+        exportService.exportCSV(rows, { headers: headers });
+    });
+  }
 
-            for (i = 0; i < series.getPointCount(); i += 1) {
-                row = {};
-                copyDomainsToRow(row, i);
-                copyRangesToRow(row, i);
-                rows.push(row);
-            }
+  static appliesTo(context) {
+    return context.domainObject
+        && context.domainObject.hasCapability("telemetry");
+  }
 
-            exportService.exportCSV(rows, { headers: headers });
-        });
-    };
-
-    ExportTelemetryAsCSVAction.appliesTo = function (context) {
-        return context.domainObject
-            && context.domainObject.hasCapability("telemetry");
-    };
-
-    return ExportTelemetryAsCSVAction;
-});
+}
